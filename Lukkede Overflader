@@ -1,0 +1,434 @@
+clear all; close all;clc;
+
+disp('Step 1')
+
+syms u v 
+assume(u,'real')
+assume(v,'real')
+
+NumberOfPoints=170;
+Width=pi;
+NumberOfPlots=1;
+
+%% Specific surface
+% x(u,v) = u;
+% y(u,v) = v;
+% z(u,v) =cos(u)+cos(v);
+% z(u,v) = Amplitudex*(u).^2-Amplitudey*(v).^2;
+% z(u,v) = -x^2+y^2;
+% x(u,v) = (R+rk*cos(u))*cos(v);
+% y(u,v) = (R+rk*cos(u))*sin(v);
+% z(u,v) = rk*sin(u);
+
+x(u,v) = (100+20*cos(u))*cos(v+1);
+y(u,v) = (100+20*cos(u))*sin(v+1);
+z(u,v) = 20*sin(u);
+
+%% Vector to surface
+% x(u,v)=x+eps*(u+v);
+% y(u,v)=y+eps*(u+v);
+% z(u,v)=z+eps*(u+v);
+
+r(u,v) = [x;y;z];
+nor =@(x) sqrt(x'*x);
+
+ru = simplify(diff(r,u));
+ruu = simplify(diff(ru,u));
+rv = simplify(diff(r,v));
+rvv = simplify(diff(rv,v));
+ruv = simplify(diff(rv,u));
+n = simplify(cross(rv,ru)/nor(cross(rv,ru)));
+
+%% First and second fundemental form
+L = simplify(ruu'*n);
+M = simplify(ruv'*n);
+N = simplify(rvv'*n);
+E = simplify(-ru'*ru);
+F = simplify(-rv'*ru);
+G = simplify(-rv'*rv);
+
+%% Principal radii of curvature
+H = simplify((E*N+G*L-2*F*M)/(2*E*G-2*F^2));
+K = simplify((L*N-M^2)/(E*G-F^2));
+
+k1 = simplify(H + sqrt(H^2-K));
+k2 = simplify(H - sqrt(H^2-K));
+
+%% Effective potential
+U = simplify(1/4*(k1-k2)^2);
+% Ufun = matlabFunction(U+eps^3*(u+v))
+%% Simulation and plot
+N = NumberOfPoints; %number of simulated points minus 2 
+
+% Area of interest
+% us = linspace(-Width,Width,N);
+% vs = linspace(-Width,Width,N);
+us = linspace(0,2*pi,N);
+vs = linspace(0,2*pi,N);
+[uss,vss] = meshgrid(us,vs);
+uss=uss';
+vss=vss';
+
+%% Plotting surface
+% figure
+rTemp = r';
+rFun = matlabFunction(rTemp);
+rs = rFun(uss(:),vss(:));
+xs = reshape(rs(:,1),[N,N]);
+ys = reshape(rs(:,2),[N,N]);
+zs = reshape(rs(:,3),[N,N]);
+surf(xs,ys,zs,'edgecolor','none','FaceAlpha',0.95)
+xlabel('x')
+ylabel('y')
+zlabel('z')
+
+%% Plotting the potential
+figure 
+Ufun = matlabFunction(U);
+% Us = Ufun(uss(:),vss(:)).*ones(size(uss(:)));
+% Us = reshape(Us,[N,N]);
+Us=Ufun(uss,vss);
+surf(uss,vss,-Us,'FaceAlpha',0.95,'edgecolor','none')
+xlabel('u')
+ylabel('v')
+zlabel('U')
+
+
+%% Diff Lign
+
+disp('Step 2')
+
+M = sparse(zeros((N)^2,(N)^2));
+% M = zeros(N^2,N^2);
+
+du = us(2)-us(1);
+dv = vs(2)-vs(1);
+% Metric tensor
+g = [-E,-F;-F,-G];
+
+detg=simplify(det(g));
+gd = matlabFunction(detg+eps^3*(u+v));
+gdu = matlabFunction(simplify(diff(detg,u))+eps^3*(u+v));
+gdv = matlabFunction(simplify(diff(detg,v))+eps^3*(u+v));
+gI = matlabFunction(g^-1+eps^3*(u+v)*[1 1;1 1]);
+dgIu = matlabFunction(simplify(diff(g^-1,u))+eps^3*(u+v)*[1 1;1 1]);
+dgIv = matlabFunction(simplify(diff(g^-1,v))+eps^3*(u+v)*[1 1;1 1]);
+
+
+A=1:N^2;
+A([N+1:N:N^2 1:N N^2-N+1:N^2 N:N:N^2])=[];
+
+for i=1:length(A)
+    a=A(i);
+%     if(mod(i/length(A),0.01)==0)
+%         procent=100*i/length(A)
+%     end
+% procent=100*i/length(A)
+
+    L=floor(a/N)+1;
+    K=a-(L-1)*N;
+        g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1) -  2/(dv^2)*g(2,2)+Us(K,L);
+
+        M(a,a+1+N)=M(a,a+1+N)+ g(1,2)/(du*dv*2);
+        M(a,a+1-N)=M(a,a+1-N)- g(1,2)/(du*dv*2);
+        M(a,a-1+N)=M(a,a-1+N)- g(1,2)/(du*dv*2);
+        M(a,a-1-N)=M(a,a-1-N)+ g(1,2)/(du*dv*2);
+end
+
+for L = 2:(N-1)
+    K = 1;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a+N-2)=M(a,a+N-2) - 1/(2*du)*(gu(1,1)+gv(1,2)+1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+       
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a+N-2)= M(a,a+N-2) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,a+1+N)=M(a,a+1+N)+ g(1,2)/(du*dv*2);
+        M(a,a+1-N)=M(a,a+1-N)- g(1,2)/(du*dv*2);
+        M(a,a-2+2*N)=M(a,a-2+2*N)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-2)=M(a,a-2)+ g(1,2)/(du*dv*2); %cyklisk
+end
+
+
+for L = 2:(N-1)
+    K = N;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+2-N)=M(a,a+2-N) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a+2-N)= M(a,a+2-N) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,a+2)=M(a,a+2)+ g(1,2)/(du*dv*2); %cyklisk
+        M(a,a+2-2*N)=M(a,a+2-2*N)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1+N)=M(a,a-1+N)- g(1,2)/(du*dv*2);
+        M(a,a-1-N)=M(a,a-1-N)+ g(1,2)/(du*dv*2);
+end
+
+for K = 2:(N-1)
+    L = 1;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        M(a,a-2*N+N^2)=M(a,a-2*N+N^2) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L) -  2/(dv^2)*g(2,2);
+        M(a,a-2*N+N^2) = M(a,a-2*N+N^2) +  1/(dv^2)*g(2,2); %cyklisk
+
+        M(a,a+1+N)=M(a,a+1+N)+ g(1,2)/(du*dv*2);
+        M(a,a+1-2*N+N^2)=M(a,a+1-2*N+N^2)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1+N)=M(a,a-1+N)- g(1,2)/(du*dv*2);
+        M(a,a-1-2*N+N^2)=M(a,a-1-2*N+N^2)+ g(1,2)/(du*dv*2); %cyklisk
+end
+
+
+for K = 2:(N-1)
+    L = N;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+2*N-N^2)=M(a,a+2*N-N^2) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a+2*N-N^2) = M(a,a+2*N-N^2) +  1/(dv^2)*g(2,2); %cyklisk
+
+        M(a,a+1+2*N-N^2)=M(a,a+1+2*N-N^2)+ g(1,2)/(du*dv*2); %cyklisk
+        M(a,a+1-N)=M(a,a+1-N)- g(1,2)/(du*dv*2);
+        M(a,a-1+2*N-N^2)=M(a,a-1+2*N-N^2)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1-N)=M(a,a-1-N)+ g(1,2)/(du*dv*2);
+end
+
+K = 1;
+L = 1;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a-2+N)=M(a,a-2+N) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+        
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        M(a,a-2*N+N^2)=M(a,a-2*N+N^2) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a-2+N)= M(a,a-2+N) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,a-2*N+N^2) = M(a,a-2*N+N^2) +  1/(dv^2)*g(2,2); %cyklisk
+        M(a,a+1+N)=M(a,a+1+N)+ g(1,2)/(du*dv*2);
+        M(a,a+1-2*N+N^2)=M(a,a+1-2*N+N^2)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-2+2*N)=M(a,a-2+2*N)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-2+N^2)=M(a,a-2+N^2)+ g(1,2)/(du*dv*2); %cyklisk
+        
+K = N;
+L = N;
+    g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+2-N)=M(a,a+2-N) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+2*N-N^2)=M(a,a+2*N-N^2) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a+2-N)= M(a,a+2-N) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,a+2*N-N^2) = M(a,a+2*N-N^2) +  1/(dv^2)*g(2,2); %cyklisk
+
+        M(a,N+2)=M(a,N+2)+ g(1,2)/(du*dv*2); %cyklisk
+        M(a,a+2-2*N)=M(a,a+2-2*N)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1+2*N-N^2)=M(a,a-1+2*N-N^2)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1-N)=M(a,a-1-N)+ g(1,2)/(du*dv*2);
+ 
+K=1;
+L=N;
+        g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,a+1)=M(a,a+1) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        M(a,a-2+N)=M(a,a-2+N) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+        
+        M(a,1+N)=M(a,1+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        M(a,a-N)=M(a,a-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv))+  1/(dv^2)*g(2,2);
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,a-2+N)= M(a,a-2+N) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,N+1) = M(a,N+1) +  1/(dv^2)*g(2,2); %cyklisk
+
+        M(a,2+N)=M(a,2+N)+ g(1,2)/(du*dv*2); %cyklisk
+        M(a,a+1-N)=M(a,a+1-N)- g(1,2)/(du*dv*2);
+        M(a,2*N-1)=M(a,2*N-1)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-2)=M(a,a-2)+ g(1,2)/(du*dv*2); %cyklisk
+      
+K=N;
+L=1;
+       g = gI(us(K),vs(L));
+        gu = dgIu(us(K),vs(L));
+        gv = dgIv(us(K),vs(L));
+        G = gd(us(K),vs(L));
+        Gu = gdu(us(K),vs(L));
+        Gv = gdv(us(K),vs(L));
+        
+        a = K+(L-1)*N;
+        M(a,2)=M(a,2) + 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv)); %cyklisk
+        M(a,a-1)=M(a,a-1) - 1/(2*du)*(gu(1,1)+gv(1,2) + 1/2*G^-1*(g(1,1)*Gu+g(1,2)*Gv))+ 1/(du^2)*g(1,1);
+        
+        M(a,a+N)=M(a,a+N) + 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)) +  1/(dv^2)*g(2,2);
+        M(a,N^2-N)=M(a,N^2-N) - 1/(2*dv)*(gu(1,2)+gv(2,2) + 1/2*G^-1*(g(1,2)*Gu+g(2,2)*Gv)); %cyklisk
+        
+        M(a,a) = M(a,a)    - 2/(du^2)*g(1,1)+Us(K,L)-  2/(dv^2)*g(2,2);
+        M(a,2)= M(a,2) + 1/(du^2)*g(1,1); %cyklisk
+        M(a,N^2-N) = M(a,N^2-N) +  1/(dv^2)*g(2,2); %cyklisk
+
+        M(a,a+2)=M(a,a+2)+ g(1,2)/(du*dv*2); %cyklisk
+        M(a,2-2*N+N^2)=M(a,N^2-2*N+2)- g(1,2)/(du*dv*2); %cyklisk
+        M(a,a-1+N)=M(a,a-1+N)- g(1,2)/(du*dv*2);
+        M(a,N^2-N-1)=M(a,N^2-N-1)+ g(1,2)/(du*dv*2); %cyklisk
+        
+% figure
+% surf(-M,'edgecolor','none','FaceAlpha',0.95)
+
+%%
+
+disp('Step 3')
+
+X=matlabFunction(x);
+Y=matlabFunction(y);
+Z=matlabFunction(z);
+
+NumberOfPlots=min(NumberOfPoints^2,NumberOfPlots);
+[V,D] =  eigs(-M,NumberOfPlots,'smallestreal','Tolerance',1e-6);
+%For vores pc, brug: [V,D] =  eigs(-M,NumberOfPlots,'smallestreal');
+[E,I] = sort(diag(D));
+% E(1:10)
+% I(1:10)
+%
+Psii=zeros(length(uss),length(vss));
+% uss2=uss(2:length(uss)-1,2:length(vss)-1);
+% vss2=vss(2:length(uss)-1,2:length(vss)-1);
+xs=X(uss,vss);
+ys=Y(uss,vss);
+zs=Z(uss,vss);
+
+% figure
+% surf(xs,ys,zs,'edgecolor','none','FaceAlpha',0.95)
+% xlabel('x')
+% ylabel('y')
+% title('Surface')
+for i =1:NumberOfPlots
+    figure
+    psi2 = conj(V(:,I(i))).*V(:,I(i));
+    psii = reshape(psi2,[N,N]);
+%     indexes = round((1:50)/50*N);
+%     [ind1,ind2] = meshgrid(indexes,indexes);
+
+%     surf(uss(indexes,indexes),vss(indexes,indexes),psii(indexes,indexes),'FaceAlpha',0.95,'edgecolor','none')
+        surf(uss,vss,psii,'FaceAlpha',0.95,'edgecolor','none')
+
+    title(['Energy nr: ' num2str(i) ' of E= ' num2str(E(i))])
+    xlabel('u')
+    ylabel('v')
+    zlabel('z')
+    figure
+
+Psii(1:length(uss)-1,1:length(vss)-1)=(psii(1:length(uss)-1,1:length(vss)-1)+psii(2:length(uss),2:length(vss))...
+                                       +psii(2:length(uss),1:length(vss)-1)+psii(1:length(uss)-1,2:length(vss)))/4;
+Psii(length(uss),1:length(vss)-1)=(psii(length(uss),1:length(vss)-1)+psii(1,1:length(vss)-1)+psii(length(uss),2:length(vss))+psii(1,2:length(vss)))/4;
+Psii(1:length(uss)-1,length(vss))=(psii(1:length(uss)-1,length(vss))+psii(1:length(uss)-1,1)+psii(2:length(uss),length(vss))+psii(2:length(uss),1))/4;
+Psii(length(uss),length(vss))=(psii(length(uss),length(vss))+psii(1,1)+psii(1,length(vss))+psii(length(uss),1))/4;
+Psii=Psii./sum(sum(Psii.*gd(uss,vss)*du*dv));  
+surf(xs,ys,zs,Psii,'edgecolor','none')
+    colormap(jet)
+    xlabel('x')
+    ylabel('y')
+    zlabel('z')
+    axis equal
+    colorbar
+title(['Energy state: ' num2str(i) ' of E= ' num2str(E(i))])
+set(gca,'fontsize',30)
+end
+
+
+%% Test uendelig br�nd
+% disp(['E1 should be: ' num2str(pi^2/(2*Width)^2*2) ' and was ' num2str(E(1))])
+% disp(['E2 should be: ' num2str(pi^2/(2*Width)^2*5) ' and was ' num2str(E(2)) ' and ' num2str(E(3))])
+
+% 
+% figure(4)
+% xs = linspace(-Width,Width,N);
+% ys = linspace(-Width,Width,N);
+% [xss,yss] = meshgrid(xs,ys);
+% hold on
+% psi2 = conj(V(:,I(1))).*V(:,I(1));
+% surf(xs,ys,max(psi2).*cos(xss.*pi/(2.*Width)).^2.*cos(yss.*pi/(2.*Width)).^2,'FaceAlpha',0.10)
+% 
+% figure(6)
+% hold on
+% psi2 = conj(V(:,I(2))).*V(:,I(2));
+% surf(xs,ys,max(psi2).*sin(2*xss.*pi/(2.*Width)).^2.*cos(yss.*pi/(2.*Width)).^2,'FaceAlpha',0.10)
+% figure(8)
+% hold on
+% psi2 = conj(V(:,I(3))).*V(:,I(3));
+% surf(xs,ys,max(psi2).*sin(2*xss.*pi/(2.*Width)).^2.*cos(yss.*pi/(2.*Width)).^2,'FaceAlpha',0.10)
